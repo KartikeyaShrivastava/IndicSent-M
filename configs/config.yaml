@@ -11,7 +11,7 @@ paths:
   raw_dir: data/raw
   processed_dir: data/processed
   sample_dir: data/sample
-  checkpoints_dir: artifacts/checkpoints
+  checkpoints_dir: ../IndicSent-M-trained-models/artifacts/checkpoints
   reports_dir: artifacts/reports
 
 dataset:
