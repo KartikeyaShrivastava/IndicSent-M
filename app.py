@@ -4,7 +4,8 @@
 """
 from __future__ import annotations
 
-import io
+import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -19,28 +20,96 @@ from src.data.image_utils import DEFAULT_MAX_BYTES, InvalidImageError, load_imag
 from src.inference import InputError, ModelNotAvailable, SentimentPredictor, best_multimodal
 from src.utils import PROJECT_ROOT, load_config, resolve_path
 
-st.set_page_config(page_title="IndicSent-M", page_icon="🗨️", layout="wide")
+st.set_page_config(page_title="IndicSent-M · Sentiment Studio", page_icon="◈", layout="wide")
 
 CFG = load_config()
 REPORTS = resolve_path(CFG["paths"]["reports_dir"])
-LABEL_STYLE = {"positive": ("#1e8e4e", "😊"), "neutral": ("#6b7280", "😐"), "negative": ("#c0392b", "😠")}
+LABEL_STYLE = {"positive": ("#187451", "+"), "neutral": ("#64748b", "="), "negative": ("#b43f51", "−")}
 EXP_NAMES = {"text": "Text-only · XLM-R", "image": "Image-only · ResNet-50",
              "multimodal_concat": "Multimodal · concatenation fusion",
              "multimodal_attention": "Multimodal · cross-attention fusion"}
 
 st.markdown("""
 <style>
-.block-container {padding-top: 1.6rem; max-width: 1200px;}
-.hero {padding: 1.2rem 1.5rem; border-radius: 14px; color: white;
-       background: linear-gradient(120deg, #3b2f8f 0%, #1f6fb2 55%, #1aa38a 100%); margin-bottom: 1rem;}
-.hero h1 {color: white; margin: 0; font-size: 2rem;} .hero p {margin: .3rem 0 0; opacity: .92;}
-.card {border: 1px solid rgba(128,128,128,.25); border-radius: 12px; padding: 1rem 1.1rem; height: 100%;}
-.pill {display:inline-block; padding:.15rem .6rem; border-radius:999px; font-size:.8rem;
-       background: rgba(31,111,178,.12); color:#1f6fb2; margin:.1rem;}
-.result {border-radius: 14px; padding: 1rem 1.3rem; color: white; margin-bottom: .6rem;}
-.result h2 {color:white; margin:0;}
-.demo {border: 3px dashed #d35400; border-radius: 12px; padding: .8rem 1rem; background: rgba(211,84,0,.08);}
-.small {font-size: .85rem; opacity: .8;}
+:root {--ink:#172b49; --muted:#52647b; --line:#dce4ef; --accent:#2859d8;}
+.stApp {background:#f6f8fc; color:var(--ink);}
+.block-container {padding-top:2.5rem; padding-bottom:3rem; max-width:1240px;}
+h1,h2,h3,h4 {letter-spacing:-.035em; color:var(--ink);}
+h1 {font-weight:750 !important;} h3 {font-size:1.2rem !important;}
+p,li {line-height:1.7;}
+[data-testid="stCaptionContainer"] {opacity:1;}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {color:var(--muted);}
+[data-testid="stSidebar"] {background:#fff; border-right:1px solid var(--line);}
+[data-testid="stSidebar"] [role="radiogroup"] {gap:.4rem;}
+[data-testid="stSidebar"] [role="radiogroup"] label {
+    padding:.65rem .8rem; border-radius:9px; width:100%;}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+    background:#edf2ff; color:#234fbd;}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {background:#f3f6fc;}
+[data-testid="stVerticalBlockBorderWrapper"] > div {border-radius:14px !important;}
+.st-key-caption_panel, .st-key-image_panel {background:#fff;}
+[data-testid="stMetric"] {background:white; border:1px solid var(--line);
+    border-radius:12px; padding:1rem 1.15rem;}
+[data-testid="stMetricValue"] {font-size:1.8rem; letter-spacing:-.04em;}
+[data-testid="stFileUploader"] {border-radius:12px;}
+[data-testid="stImage"] img {border-radius:10px;}
+.stButton > button {border-radius:9px; min-height:2.75rem; font-weight:600;}
+.stButton > button[kind="primary"] {box-shadow:0 3px 8px #2859d81a;}
+button:focus-visible, input:focus-visible, textarea:focus-visible,
+[role="tab"]:focus-visible {outline:3px solid #2859d8 !important; outline-offset:3px;}
+.hero {padding:.25rem 0 1.25rem; margin-bottom:.65rem; border-bottom:1px solid var(--line);}
+.hero h1 {font-size:clamp(1.9rem,4vw,2.65rem); line-height:1.2; margin:.6rem 0; padding:0;}
+.hero p {color:var(--muted); max-width:720px; margin:.6rem 0; font-size:1rem;}
+.eyebrow {color:var(--accent); font-size:.72rem; font-weight:700; letter-spacing:.14em;
+    text-transform:uppercase; margin-bottom:.5rem;}
+.brand {display:flex; align-items:center; gap:.65rem; margin:.5rem 0 1.2rem;}
+.brand-mark {display:grid; place-items:center; width:38px; height:38px; background:#2859d8;
+    color:white; font-size:1.5rem; border-radius:10px;}
+.brand strong {font-size:1.15rem; letter-spacing:-.04em;}
+.brand small {display:block; color:var(--muted); font-size:.75rem;}
+.card {background:#fff; border:1px solid var(--line); border-radius:14px;
+    padding:1.3rem; min-height:180px; margin-bottom:.7rem;}
+.card h4 {font-size:1.05rem; margin:.65rem 0 .5rem; padding:0;}
+.card p {color:var(--muted); margin:0; font-size:.92rem;}
+.card-index {font-size:.75rem; font-weight:700; color:var(--accent);}
+.pill {display:inline-block; padding:.22rem .65rem; border-radius:6px; font-size:.76rem;
+    font-weight:600; background:#edf2ff; color:#234fbd; margin:.15rem .25rem .15rem 0;}
+.flow {display:grid; grid-template-columns:1fr auto 1fr auto 1fr; gap:1rem; align-items:center;
+    background:white; border:1px solid var(--line); border-radius:14px; padding:1.5rem; margin:.7rem 0 1rem;}
+.flow strong,.flow span {display:block;}.flow span {font-size:.85rem; color:var(--muted); margin-top:.4rem;}
+.flow-arrow {color:#8d9db4; font-size:1.3rem;}
+.result {background:white; border:1px solid var(--line); border-left:5px solid var(--result-color);
+    border-radius:14px; padding:1.5rem; display:flex; justify-content:space-between;
+    align-items:center; gap:1rem; margin-bottom:.8rem;}
+.result h2 {color:var(--result-color); font-size:2rem; margin:.2rem 0; padding:0;}
+.result .confidence {text-align:right;}.confidence strong {font-size:2rem; display:block; letter-spacing:-.05em;}
+.small {font-size:.82rem; color:var(--muted);}
+.probabilities {background:white; border:1px solid var(--line); border-radius:12px; padding:1.2rem; margin:.5rem 0 1rem;}
+.prob-row {display:grid; grid-template-columns:80px 1fr 56px; align-items:center; gap:1rem; margin:.7rem 0; font-size:.86rem;}
+.prob-track {background:#edf1f7; border-radius:20px; height:9px; overflow:hidden;}
+.prob-fill {height:100%; border-radius:20px;}
+.prob-value {text-align:right; font-variant-numeric:tabular-nums;}
+.demo {border:2px dashed #b86b17; border-radius:12px; padding:1rem 1.2rem; background:#fff8eb; color:#714013;}
+.demo h3 {color:#714013; font-size:1rem !important; margin:0 0 .4rem; padding:0;}
+.empty {text-align:center; border:1px dashed #c7d3e5; border-radius:12px;
+    padding:2rem 1rem; color:var(--muted); background:#fbfcff; margin:.5rem 0;}
+.empty strong {display:block; color:var(--ink); margin-bottom:.4rem;}
+.model-row {border-bottom:1px solid #edf1f7; padding:.7rem 0; font-size:.8rem;}
+.model-row strong {display:block; font-weight:600;}
+.footer {border-top:1px solid var(--line); padding-top:1rem; margin-top:2rem;
+    font-size:.78rem; color:var(--muted);}
+@media(max-width:760px) {
+    .block-container {padding:3.5rem 1rem 2rem;}
+    .flow {grid-template-columns:1fr; gap:.6rem; padding:1.2rem;}
+    .flow-arrow {transform:rotate(90deg); justify-self:start;}
+    .card {min-height:0;} .result {align-items:flex-start; flex-wrap:wrap;}
+    .result .confidence {text-align:left;}
+    .prob-row {grid-template-columns:65px 1fr 50px; gap:.6rem;}
+    [data-testid="stHorizontalBlock"] {flex-wrap:wrap;}
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+        width:100% !important; flex:1 1 100% !important; min-width:0 !important;}
+    [role="tablist"] {overflow-x:auto;}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,7 +128,35 @@ def read_json(p: Path):
 
 
 def hero(title: str, subtitle: str) -> None:
-    st.markdown(f'<div class="hero"><h1>{title}</h1><p>{subtitle}</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="hero"><div class="eyebrow">IndicSent-M / Sentiment Studio</div>'
+                f'<h1>{html.escape(title)}</h1><p>{html.escape(subtitle)}</p></div>', unsafe_allow_html=True)
+
+
+def card(index: str, title: str, body: str) -> None:
+    st.markdown(f'<div class="card"><span class="card-index">{html.escape(index)}</span>'
+                f'<h4>{html.escape(title)}</h4><p>{html.escape(body)}</p></div>', unsafe_allow_html=True)
+
+
+def navigate(page: str) -> None:
+    st.session_state.navigation = page
+
+
+def probability_bars(probabilities: dict) -> None:
+    rows = []
+    for label, (color, _) in LABEL_STYLE.items():
+        value = float(probabilities[label])
+        rows.append(f'<div class="prob-row"><span>{label.capitalize()}</span>'
+                    f'<div class="prob-track" role="meter" aria-label="{label.capitalize()} probability" '
+                    f'aria-valuemin="0" aria-valuemax="100" aria-valuenow="{value * 100:.1f}">'
+                    f'<div class="prob-fill" style="width:{value * 100:.3f}%;background:{color}"></div></div>'
+                    f'<span class="prob-value">{value:.1%}</span></div>')
+    st.markdown('<div class="probabilities">' + ''.join(rows) + '</div>', unsafe_allow_html=True)
+
+
+def image_preview(image: Image.Image, caption: str) -> None:
+    preview = image.copy()
+    preview.thumbnail((720, 420))
+    st.image(preview, caption=caption, width="content")
 
 
 def dataset_is_synthetic() -> bool:
@@ -69,35 +166,37 @@ def dataset_is_synthetic() -> bool:
 
 # ------------------------------------------------------------------------------------ pages
 def page_home() -> None:
-    hero("IndicSent-M — Indian Multimodal Sentiment Analyzer",
-         "Sentiment of Indian-language memes from their text <b>and</b> image: Positive · Neutral · Negative")
+    hero("A little context. A clearer sentiment.",
+         "Explore how captions and images work together to express the sentiment of Indian-language memes.")
+    st.markdown('<span class="pill">Multimodal analysis</span><span class="pill">Bengali · MemoSen</span>'
+                '<span class="pill">Explainable predictions</span>', unsafe_allow_html=True)
+    st.write("")
+    st.button("Analyze a meme →", type="primary", on_click=navigate, args=("Analyze",))
+    st.caption("Bring a caption, an image, or both. Compare positive, neutral, and negative sentiment.")
+    st.write("")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown('<div class="card"><h4>🎯 Objective</h4>Test whether combining the caption and the '
-                    'picture of a meme classifies its sentiment better than either alone, and show '
-                    '<i>why</i> a model decided what it did.</div>', unsafe_allow_html=True)
+        card("01 / EXPLORE", "One meme, three perspectives",
+             "Analyze the caption, the picture, or their combination with separately trained models.")
     with c2:
-        st.markdown('<div class="card"><h4>🧩 Modalities</h4>'
-                    '<span class="pill">Text</span><span class="pill">Image</span>'
-                    '<span class="pill">Text + Image</span><br><br>Each mode is a separately trained '
-                    'model evaluated on the same test memes.</div>', unsafe_allow_html=True)
+        card("02 / UNDERSTAND", "Look beyond the label",
+             "Explore influential words and image regions alongside the model’s class probabilities.")
     with c3:
-        st.markdown('<div class="card"><h4>🌐 Languages</h4>Trained on <b>Bengali</b> memes (MemoSen), '
-                    'incl. Bengali–English code-mixing and romanised Bengali. XLM-R also covers Hindi, '
-                    'Tamil, Telugu, Marathi, Urdu… but those were <b>not</b> in the training data.</div>',
-                    unsafe_allow_html=True)
-    st.markdown("### Architecture")
-    st.code(
-        "caption ─► normalise ─► XLM-R base (top 4 layers fine-tuned) ─► mean-pool 768-d ─► proj 256 ┐\n"
-        "                                                                                    ├─► fusion ─► MLP ─► softmax(3)\n"
-        "image ───► 224×224 ───► ResNet-50 (layer4 fine-tuned) ──────► 2048-d / 7×7 grid ─► proj 256 ┘\n"
-        "fusion = concatenation (baseline)  |  bidirectional cross-attention (text tokens ⇄ 49 image regions)",
-        language=None)
-    st.markdown("### How to use")
-    st.markdown("1. Open **Analyze** in the sidebar.\n2. Pick a mode — text-only, image-only or multimodal.\n"
-                "3. Enter the meme text and/or upload the image (JPG/PNG, ≤ 10 MB), then press **Analyze**.\n"
-                "4. Read the prediction, class probabilities, highlighted words and the Grad-CAM heatmap.\n"
-                "5. **Model Comparison** shows how the four models performed on the held-out test set.")
+        card("03 / COMPARE", "Evidence, with context",
+             "Compare four models on the same test set, including a separate source-disjoint robustness evaluation.")
+    st.markdown("### From meme to meaning")
+    st.markdown('<div class="flow"><div><strong>Caption + image</strong><span>Text you supply and a JPG or PNG</span></div>'
+                '<div class="flow-arrow" aria-hidden="true">→</div><div><strong>Encode + combine</strong>'
+                '<span>XLM-R · ResNet-50 · multimodal fusion</span></div>'
+                '<div class="flow-arrow" aria-hidden="true">→</div><div><strong>Sentiment + explanations</strong>'
+                '<span>Positive, neutral, or negative</span></div></div>', unsafe_allow_html=True)
+    with st.expander("Inside the architecture"):
+        st.markdown("**Caption:** normalization → XLM-R base → 768-dimensional mean pooling → 256-dimensional projection.\n\n"
+                    "**Image:** 224 × 224 input → ResNet-50 → 2048-dimensional features / 7 × 7 region grid → projection.\n\n"
+                    "**Fusion:** concatenation or bidirectional cross-attention between text tokens and 49 image regions, "
+                    "followed by an MLP and a three-class softmax.")
+    st.info("Trained on Bengali memes, including Bengali–English code-mixing and romanised Bengali. "
+            "Other languages are outside the training distribution. Captions must be entered manually; there is no OCR.")
     avail = get_predictor().available()
     if not avail:
         st.warning("No trained model checkpoints were found yet — see the **Analyze** page for setup steps.")
@@ -106,31 +205,35 @@ def page_home() -> None:
 
 
 def _setup_message() -> None:
-    st.error("No trained checkpoint is available for this mode, so no real prediction can be made.")
-    st.markdown("Train the models first (≈1 h on an Apple M1 / faster on a GPU):")
-    st.code("python -m src.data.download --dataset memosen\npython -m src.data.prepare\n"
-            "python -m src.training.train_text\npython -m src.training.train_image\n"
-            "python -m src.training.train_multimodal --fusion concat\n"
-            "python -m src.training.train_multimodal --fusion attention\n\n"
-            "# or all at once:\npython scripts/run_pipeline.py", language="bash")
+    st.warning("This model is not available yet. A trained checkpoint is required for a real prediction.")
+    with st.expander("Model setup instructions"):
+        st.markdown("Train the models first (≈1 h on an Apple M1 / faster on a GPU):")
+        st.code("python -m src.data.download --dataset memosen\npython -m src.data.prepare\n"
+                "python -m src.training.train_text\npython -m src.training.train_image\n"
+                "python -m src.training.train_multimodal --fusion concat\n"
+                "python -m src.training.train_multimodal --fusion attention\n\n"
+                "# or all at once:\npython scripts/run_pipeline.py", language="bash")
 
 
 def _show_demo(mode: str) -> None:
     st.markdown('<div class="demo"><h3>⚠️ DEMONSTRATION — NO MODEL WAS RUN</h3>'
                 'This placeholder exists only to preview the interface layout. The values below are fixed '
                 '(uniform) and carry <b>no information</b> about your input.</div>', unsafe_allow_html=True)
-    st.bar_chart(pd.DataFrame({"probability (placeholder)": [1 / 3] * 3},
-                              index=["positive", "neutral", "negative"]))
+    st.caption(f"Layout preview · {mode.capitalize()} mode · fixed placeholder probabilities")
+    probability_bars({label: 1 / 3 for label in LABEL_STYLE})
 
 
 def _render_result(r, show_ig: bool) -> None:
-    color, emoji = LABEL_STYLE.get(r.label, ("#333", ""))
-    st.markdown(f'<div class="result" style="background:{color}"><h2>{emoji} {r.label.capitalize()}</h2>'
-                f'Confidence {r.confidence:.1%} · {EXP_NAMES[r.experiment]}</div>', unsafe_allow_html=True)
+    color, symbol = LABEL_STYLE.get(r.label, ("#333", ""))
+    st.markdown("### Analysis result")
+    st.markdown(f'<div class="result" style="--result-color:{color}"><div><div class="eyebrow">Predicted sentiment</div>'
+                f'<h2>{symbol} {html.escape(r.label.capitalize())}</h2>'
+                f'<span class="small">{html.escape(EXP_NAMES[r.experiment])}</span></div>'
+                f'<div class="confidence"><strong>{r.confidence:.1%}</strong><span class="small">Model confidence</span>'
+                '</div></div>', unsafe_allow_html=True)
     st.caption("Confidence is the model's predicted probability for this class — not a guarantee that "
                "the prediction is correct. Models can be confidently wrong, e.g. on sarcasm.")
-    probs = pd.DataFrame({"probability": r.probabilities}).reindex(["positive", "neutral", "negative"])
-    st.bar_chart(probs, horizontal=True, height=180)
+    probability_bars(r.probabilities)
     for w in r.warnings:
         st.warning(w)
     if r.script_info:
@@ -144,7 +247,7 @@ def _render_result(r, show_ig: bool) -> None:
     i = 0
     if r.text_occlusion:
         from src.explainability.text_explainer import render_html
-        with cols[i]:
+        with cols[i], st.container(border=True):
             st.markdown("**Influential words** — occlusion (leave-one-word-out)")
             st.markdown(render_html(r.text_occlusion["words"], r.label), unsafe_allow_html=True)
             st.caption("Score = drop in P(predicted class) when the word is removed.")
@@ -160,9 +263,9 @@ def _render_result(r, show_ig: bool) -> None:
                             "its attributions are hidden because they would be misleading. Use occlusion above.")
         i += 1
     if r.gradcam is not None:
-        with cols[min(i, len(cols) - 1)]:
+        with cols[min(i, len(cols) - 1)], st.container(border=True):
             st.markdown("**Image regions** — Grad-CAM (ResNet-50 layer4)")
-            st.image(r.gradcam, width="stretch")
+            image_preview(r.gradcam, "Predicted-class sensitivity overlay")
             st.caption("Red = regions the predicted-class score is most sensitive to (7×7 grid, upsampled). "
                        "A sensitivity map, not a causal explanation; it often lights up caption text.")
     with st.expander("Limitations of these explanations"):
@@ -176,12 +279,13 @@ def _render_result(r, show_ig: bool) -> None:
 
 
 def page_analyze() -> None:
-    hero("Sentiment Analysis", "Analyze a meme from its text, its image, or both")
+    hero("Analyze a meme", "Add your inputs, choose a perspective, and explore the model’s prediction.")
     pred = get_predictor()
     avail = pred.available()
     if dataset_is_synthetic() and avail:
         st.error("Checkpoints were trained on SYNTHETIC sample data — predictions are not meaningful.")
 
+    st.markdown("### 01 / Choose a perspective")
     mode = st.radio("Analysis mode", ["Multimodal (text + image)", "Text-only", "Image-only"], horizontal=True)
     mode_key = {"Multimodal (text + image)": "multimodal", "Text-only": "text", "Image-only": "image"}[mode]
     if mode_key == "multimodal":
@@ -192,68 +296,121 @@ def page_analyze() -> None:
     else:
         exp = mode_key
 
+    st.markdown("### 02 / Add your meme")
+    st.caption("Bengali and Bengali–English captions match the training data. Other languages may be unreliable.")
     if "example" not in st.session_state:
         st.session_state.example = None
     test_csv = PROJECT_ROOT / "data" / "processed" / "test.csv"
-    if test_csv.exists():
-        if st.button("🎲 Load a random meme from the held-out test set",
-                     help="Real MemoSen memes; some contain crude or offensive humour."):
-            row = pd.read_csv(test_csv, keep_default_na=False).sample(1).iloc[0]
-            st.session_state.example = row.to_dict()
-            st.session_state.text_input = row["text"]
+    examples_available = test_csv.exists()
+    if st.button("Load a random meme", icon="🎲", disabled=not examples_available,
+                 help="Loads an existing meme and its caption from the held-out test set. "
+                      "Some examples contain crude or offensive humour."):
+        try:
+            examples = pd.read_csv(test_csv, keep_default_na=False)
+            if not {"id", "text", "label", "image_path"}.issubset(examples.columns) or examples.empty:
+                st.warning("No usable test examples were found. Prepare the dataset to enable random memes.")
+            else:
+                previous = st.session_state.example
+                candidates = examples[examples["id"] != previous["id"]] if previous and len(examples) > 1 else examples
+                row = candidates.sample(1).iloc[0]
+                st.session_state.example = row.to_dict()
+                st.session_state.text_input = row["text"]
+                # A requested example replaces a previous upload as well as its caption.
+                st.session_state.upload_revision = st.session_state.get("upload_revision", 0) + 1
+        except (OSError, ValueError, pd.errors.ParserError) as e:
+            st.warning(f"The test examples could not be loaded: {e}")
+    if not examples_available:
+        st.caption("Random memes become available after the MemoSen dataset is downloaded and prepared. "
+                   "This loads dataset examples; it does not generate new meme images.")
     ex = st.session_state.example
 
-    c1, c2 = st.columns([1.1, 1])
+    input_panels = st.columns(2) if mode_key == "multimodal" else [st.container()]
     text, image_src = None, None
-    with c1:
-        if mode_key in ("text", "multimodal"):
-            text = st.text_area("Meme text / caption", key="text_input", height=130,
-                                placeholder="e.g. আজকের দিনটা দারুণ কাটলো! 😄   or   aaj ka din mast tha 😂")
-        if ex:
-            st.caption(f"Test example `{ex['id']}` · annotated label: **{ex['label']}**")
-    with c2:
-        if mode_key in ("image", "multimodal"):
-            up = st.file_uploader("Meme image (JPG, JPEG, PNG · max 10 MB)", type=["jpg", "jpeg", "png"])
+    if mode_key in ("text", "multimodal"):
+        with input_panels[0], st.container(border=True, key="caption_panel"):
+            st.markdown("#### Caption")
+            st.caption("Type or paste the text from your meme. Text is not extracted from the image.")
+            text = st.text_area("Meme text / caption", key="text_input", height=170,
+                                placeholder="আজকের দিনটা দারুণ কাটলো! 😄\n\nOr try a Bengali–English caption.")
+    if mode_key in ("image", "multimodal"):
+        with input_panels[-1], st.container(border=True, key="image_panel"):
+            st.markdown("#### Image")
+            st.caption("Upload the original meme. JPG, JPEG, or PNG · up to 10 MB.")
+            up = st.file_uploader("Meme image", type=["jpg", "jpeg", "png"],
+                                  key=f"meme_upload_{st.session_state.get('upload_revision', 0)}")
             if up is not None:
                 data = up.getvalue()
                 try:
                     preview = load_image(data, max_bytes=DEFAULT_MAX_BYTES)
                     image_src = data
-                    st.image(preview, caption="Uploaded image", width="stretch")
+                    image_preview(preview, "Uploaded image")
                 except InvalidImageError as e:
                     st.error(f"Image rejected: {e}")
             elif ex:
                 path = resolve_path(ex.get("image_source") or ex["image_path"])
                 image_src = str(path)
-                st.image(Image.open(path), caption="Test-set image", width="stretch")
+                try:
+                    with Image.open(path) as sample_image:
+                        image_preview(sample_image, "Test-set image")
+                except (OSError, ValueError):
+                    image_src = None
+                    st.warning("This example’s image is unavailable. Upload an image or load another example.")
+            else:
+                st.markdown('<div class="empty"><strong>Your image will appear here</strong>'
+                            'Choose a file above to preview your meme.</div>', unsafe_allow_html=True)
+    if ex:
+        st.caption(f"Loaded test example `{ex['id']}` · annotated label: **{ex['label']}**. "
+                   "Your uploaded image takes priority over the example image.")
 
-    explain = st.toggle("Compute explanations (slower)", value=True)
-    show_ig = st.toggle("Also show Integrated Gradients (experimental)", value=False, disabled=not explain)
+    st.markdown("### 03 / Run your analysis")
+    explain = st.toggle("Include word and image explanations", value=True,
+                        help="Explanations take additional time. Only the explanations relevant to your mode are shown.")
+    with st.expander("Advanced display options"):
+        show_ig = st.toggle("Show Integrated Gradients (experimental)", value=False, disabled=not explain)
+        st.caption("Shows the additional text attribution only when its convergence check passes.")
     demo = False
     if exp not in avail:
         _setup_message()
         demo = st.checkbox("Preview the interface in clearly-labelled DEMO mode (no model)")
-    if st.button("Analyze", type="primary", width="stretch"):
+    # Keep results through display-only reruns; invalidate them whenever the actual inputs change.
+    signature = hashlib.sha256()
+    signature.update(json.dumps([exp, text, explain, demo], ensure_ascii=False).encode("utf-8"))
+    signature.update(image_src if isinstance(image_src, bytes) else str(image_src).encode("utf-8"))
+    input_signature = signature.hexdigest()
+    if st.session_state.get("analysis_signature") != input_signature:
+        st.session_state.pop("analysis_result", None)
+        st.session_state.pop("analysis_demo", None)
+    st.session_state.analysis_signature = input_signature
+    if st.button("Preview demo layout" if demo else "Analyze meme", type="primary", width="stretch",
+                 disabled=exp not in avail and not demo):
         if demo:
-            _show_demo(mode_key)
-            return
-        if exp not in avail:
-            st.stop()
-        try:
-            with st.spinner("Running the model…"):
-                r = pred.predict(text, image_src, exp, explain=explain)
-        except InputError as e:
-            st.warning(str(e))
-            return
-        except ModelNotAvailable as e:
-            st.error(str(e))
-            return
-        except Exception as e:  # never crash the UI
-            st.error(f"Unexpected error during inference: {type(e).__name__}: {e}")
-            return
+            st.session_state.analysis_demo = True
+        else:
+            st.session_state.pop("analysis_result", None)
+            try:
+                with st.spinner("Analyzing your meme… Explanations may take a little longer." if explain
+                                else "Analyzing your meme…"):
+                    st.session_state.analysis_result = pred.predict(text, image_src, exp, explain=explain)
+            except InputError as e:
+                st.warning(str(e))
+                return
+            except ModelNotAvailable as e:
+                st.error(str(e))
+                return
+            except Exception as e:  # never crash the UI
+                st.error(f"Unexpected error during inference: {type(e).__name__}: {e}")
+                return
+    if st.session_state.get("analysis_demo"):
+        _show_demo(mode_key)
+    elif "analysis_result" in st.session_state:
+        r = st.session_state.analysis_result
+        st.divider()
         _render_result(r, show_ig)
         st.caption(f"Inference {r.latency_ms:.0f} ms on {r.device} (excluding explanations) · checkpoint epoch "
                    f"{r.checkpoint['epoch']}, val macro-F1 {r.checkpoint['val_macro_f1']:.3f}")
+    elif exp in avail:
+        st.markdown('<div class="empty"><strong>Ready when you are</strong>'
+                    'Add your inputs and select Analyze meme to see the prediction here.</div>', unsafe_allow_html=True)
 
 
 PROTOCOLS = {
@@ -264,7 +421,7 @@ PROTOCOLS = {
 
 
 def page_comparison() -> None:
-    hero("Model Comparison", "Held-out test-set results generated from the saved evaluation outputs")
+    hero("Compare the evidence", "Four models. Shared test examples. A closer look at what improves — and what does not.")
     avail_protocols = [k for k, (r, _) in PROTOCOLS.items() if (r / "comparison" / "comparison.json").exists()]
     if len(avail_protocols) > 1:
         proto = st.radio("Evaluation protocol", avail_protocols, horizontal=True,
@@ -273,6 +430,13 @@ def page_comparison() -> None:
     else:
         proto = avail_protocols[0] if avail_protocols else list(PROTOCOLS)[0]
     reports, ckpts = PROTOCOLS[proto]
+    st.caption(f"Selected protocol: {proto}")
+    if proto.startswith("Source-disjoint"):
+        st.info("Robustness evaluation: entire source pages are held out. These results measure generalization "
+                "to unfamiliar pages and should be interpreted separately from the random split.")
+    else:
+        st.info("Main evaluation: near-duplicate memes are grouped before random splitting. "
+                "Source-page styles can still appear in both training and test sets.")
     comp = read_json(reports / "comparison" / "comparison.json")
     if not comp:
         st.info("No comparison yet. Run `python -m src.evaluation.evaluate` then "
@@ -281,48 +445,72 @@ def page_comparison() -> None:
     if dataset_is_synthetic():
         st.error("These numbers come from the SYNTHETIC sample data and are meaningless.")
     t = pd.DataFrame(comp["table"])
-    show = t[["model", "accuracy", "macro_precision", "macro_recall", "macro_f1", "weighted_f1",
-              "f1_positive", "f1_neutral", "f1_negative", "trainable_params_M", "training_min",
-              "latency_median_ms"]].set_index("model")
-    st.markdown(f"**Test set:** {comp['n_common_test_examples']} memes (identical for every model).")
-    st.dataframe(show.style.format("{:.3f}").highlight_max(subset=["accuracy", "macro_f1", "weighted_f1"],
-                                                           color="#cdeccd"), width="stretch")
-    st.caption("Macro-F1 (unweighted mean of per-class F1) is the primary metric because classes are imbalanced. "
-               "Latency = median per-meme time at batch size 1 incl. preprocessing. "
-               "\\*The source-page prior predicts the most common label of the page a meme came from — it uses "
-               "metadata, not content, and shows how much of the task a model could solve by recognising the page.")
-    c1, c2 = st.columns(2)
-    for col, img in [(c1, "accuracy_macro_f1.png"), (c2, "per_class_f1.png")]:
-        p = reports / "comparison" / img
+    trained = t[~t["experiment"].str.startswith("baseline")]
+    best = trained.loc[trained["macro_f1"].idxmax()] if not trained.empty else None
+    summary = st.columns(3)
+    summary[0].metric("Models evaluated", len(trained))
+    summary[1].metric("Shared test memes", f"{comp['n_common_test_examples']:,}")
+    summary[2].metric("Highest model macro-F1", f"{best['macro_f1']:.3f}" if best is not None else "—")
+    if best is not None:
+        st.caption(f"Highest macro-F1 in this protocol: {best['model']}. A higher score alone does not establish statistical significance.")
+    overview, diagnostics, statistics = st.tabs(["Overview", "Class & training details", "Statistical evidence"])
+    with overview:
+        st.markdown("### Model performance")
+        show = t[["model", "accuracy", "macro_f1", "weighted_f1", "latency_median_ms"]].rename(columns={
+            "model": "Model", "accuracy": "Accuracy", "macro_f1": "Macro-F1",
+            "weighted_f1": "Weighted F1", "latency_median_ms": "Latency (ms)"})
+        st.dataframe(show, hide_index=True, width="stretch", column_config={
+            "Accuracy": st.column_config.NumberColumn(format="%.3f"),
+            "Macro-F1": st.column_config.NumberColumn(format="%.3f"),
+            "Weighted F1": st.column_config.NumberColumn(format="%.3f"),
+            "Latency (ms)": st.column_config.NumberColumn(format="%.1f"),
+        })
+        st.caption("Macro-F1 averages the three class F1 scores equally and is the primary metric for this imbalanced dataset. "
+                   "Latency is the median per-meme time at batch size 1, including preprocessing.")
+        st.caption("The source-page prior uses metadata rather than content; it is a shortcut reference. "
+                   "The majority-class baseline always predicts the most frequent training label.")
+        p = reports / "comparison" / "accuracy_macro_f1.png"
         if p.exists():
-            col.image(str(p), width="stretch")
-    p = reports / "comparison" / "confusion_matrices.png"
-    if p.exists():
-        st.markdown("#### Confusion matrices")
-        st.image(str(p), width="stretch")
-
-    st.markdown("#### Findings (computed from the results above)")
-    for line in findings(t, comp):
-        st.markdown(f"- {line}")
-    if comp.get("paired_bootstrap"):
-        st.markdown("#### Paired bootstrap tests (macro-F1 difference)")
-        st.dataframe(pd.DataFrame(comp["paired_bootstrap"]).T, width="stretch")
-    if comp.get("modality_ablation"):
-        st.markdown("#### Does the multimodal model use both inputs? (modality ablation)")
-        rows = [{"model": EXP_NAMES[e], "condition": c, **v} for e, ab in comp["modality_ablation"].items()
-                for c, v in ab.items()]
-        st.dataframe(pd.DataFrame(rows), width="stretch")
-    hist = {e: ckpts / e / "history.csv" for e in EXP_NAMES}
-    hist = {e: pd.read_csv(p) for e, p in hist.items() if p.exists()}
-    if hist:
-        st.markdown("#### Validation macro-F1 per epoch")
-        st.line_chart(pd.DataFrame({EXP_NAMES[e]: h.set_index("epoch")["val_macro_f1"] for e, h in hist.items()}))
-    gal = reports / "explanations"
-    figs = sorted(gal.glob("*.png")) if gal.exists() else []
-    if figs:
-        with st.expander(f"Explanation gallery ({len(figs)} test memes)"):
-            for f in figs:
-                st.image(str(f), width="stretch")
+            st.image(str(p), width="stretch")
+        with st.expander("Findings derived from these results", expanded=True):
+            for line in findings(t, comp):
+                st.markdown(f"- {line}")
+    with diagnostics:
+        st.markdown("### Performance by sentiment")
+        p = reports / "comparison" / "per_class_f1.png"
+        if p.exists():
+            st.image(str(p), width="stretch")
+        p = reports / "comparison" / "confusion_matrices.png"
+        if p.exists():
+            st.markdown("#### Confusion matrices")
+            st.image(str(p), width="stretch")
+        hist = {e: ckpts / e / "history.csv" for e in EXP_NAMES}
+        hist = {e: pd.read_csv(p) for e, p in hist.items() if p.exists()}
+        if hist:
+            st.markdown("#### Validation macro-F1 per epoch")
+            st.line_chart(pd.DataFrame({EXP_NAMES[e]: h.set_index("epoch")["val_macro_f1"] for e, h in hist.items()}))
+        gal = reports / "explanations"
+        figs = sorted(gal.glob("*.png")) if gal.exists() else []
+        if figs:
+            with st.expander(f"Explanation gallery · {len(figs)} test memes"):
+                for f in figs:
+                    st.image(str(f), width="stretch")
+    with statistics:
+        st.markdown("### Detailed metrics")
+        full = t[["model", "accuracy", "macro_precision", "macro_recall", "macro_f1", "weighted_f1",
+                  "f1_positive", "f1_neutral", "f1_negative", "trainable_params_M", "training_min",
+                  "latency_median_ms"]].set_index("model")
+        st.dataframe(full, width="stretch")
+        if comp.get("paired_bootstrap"):
+            st.markdown("#### Paired bootstrap tests")
+            st.caption("Differences in macro-F1 with 95% confidence intervals. Intervals spanning zero do not establish a difference.")
+            st.dataframe(pd.DataFrame(comp["paired_bootstrap"]).T, width="stretch")
+        if comp.get("modality_ablation"):
+            st.markdown("#### Does the model use both inputs?")
+            st.caption("Modality ablation: compare performance when the image is neutralized or the caption is removed.")
+            rows = [{"model": EXP_NAMES[e], "condition": c, **v} for e, ab in comp["modality_ablation"].items()
+                    for c, v in ab.items()]
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
 
 def findings(t: pd.DataFrame, comp: dict) -> list[str]:
@@ -348,36 +536,54 @@ def findings(t: pd.DataFrame, comp: dict) -> list[str]:
 
 
 def page_dataset() -> None:
-    hero("Dataset & Methodology", "What the models were trained on, and how")
+    hero("The data behind the prediction", "Explore MemoSen, the preparation pipeline, and the scope of these experiments.")
     s = read_json(PROJECT_ROOT / "data" / "processed" / "stats.json")
     if not s:
-        st.info("Run `python -m src.data.prepare` to generate dataset statistics.")
+        s = read_json(REPORTS / "dataset" / "stats.json")
+        if s:
+            st.info("Showing the saved evaluation dataset snapshot. Local processed data has not been generated.")
+    if not s:
+        st.info("Dataset statistics are not available yet. The methodology is described below.")
+        with st.expander("Generate local dataset statistics"):
+            st.code("python -m src.data.prepare", language="bash")
     else:
         if s.get("synthetic"):
             st.error("Processed data is the SYNTHETIC sample.")
-        st.markdown(f"**Dataset:** `{s['dataset']}` · {s['usable_records']} usable memes of {s['raw_records']} "
-                    f"annotations · split: {s['split_source']}")
+        st.caption(f"Dataset: {s['dataset']} · {s['usable_records']:,} usable memes of {s['raw_records']:,} "
+                   f"annotations · {s['split_source']}")
         c = st.columns(4)
         c[0].metric("Train", s["split_sizes"]["train"])
         c[1].metric("Validation", s["split_sizes"]["val"])
         c[2].metric("Test", s["split_sizes"]["test"])
         c[3].metric("Code-mixed captions", f"{s['code_mixed_fraction']:.0%}")
-        st.dataframe(pd.DataFrame(s["label_distribution"]), width="stretch")
         figs = REPORTS / "dataset"
-        cols = st.columns(2)
-        for i, f in enumerate(["label_distribution.png", "script_distribution.png", "text_length.png",
-                               "image_sizes.png"]):
-            if (figs / f).exists():
-                cols[i % 2].image(str(figs / f), width="stretch")
-        with st.expander("Removed records & raw statistics"):
-            st.json(s)
-    st.markdown("""
+        distribution, characteristics = st.tabs(["Labels & scripts", "Caption & image details"])
+        with distribution:
+            cols = st.columns(2)
+            for col, name in zip(cols, ["label_distribution.png", "script_distribution.png"]):
+                if (figs / name).exists():
+                    col.image(str(figs / name), width="stretch")
+            with st.expander("Label counts by split"):
+                st.dataframe(pd.DataFrame(s["label_distribution"]), width="stretch")
+        with characteristics:
+            cols = st.columns(2)
+            for col, name in zip(cols, ["text_length.png", "image_sizes.png"]):
+                if (figs / name).exists():
+                    col.image(str(figs / name), width="stretch")
+            with st.expander("Removed records & raw statistics"):
+                st.json(s)
+    st.markdown("### A reproducible research workflow")
+    dataset, preparation, training, limitations = st.tabs(["Dataset", "Preprocessing", "Training & evaluation", "Limitations"])
+    with dataset:
+        st.markdown("""
 #### MemoSen
 Bengali meme sentiment dataset (Hossain, Sharif & Hoque, *LREC 2022*): meme images with their
 embedded caption text transcribed and a positive / neutral / negative label. Captions are mostly
 Bengali script, with English and romanised Bengali mixed in. No explicit licence is published with
 the data; it is used here for non-commercial research with citation, and is not redistributed.
-
+""")
+    with preparation:
+        st.markdown("""
 #### Preprocessing
 1. Load captions, image file names and labels; map labels to `positive / neutral / negative`.
 2. Validate every image (decodable, size limits); drop records whose image is missing or corrupt.
@@ -387,7 +593,9 @@ the data; it is used here for non-commercial research with citation, and is not 
 5. Remove exact duplicates (same image hash + text); drop duplicates with conflicting labels.
 6. Group near-duplicates (same image hash or same long caption) and split **by group**, stratified by
    label, 70/10/20 with seed 42, so no meme template or caption leaks across splits.
-
+""")
+    with training:
+        st.markdown("""
 #### Training (identical for all experiments)
 AdamW (lr 2e-5 text encoder, 1e-4 ResNet layer4, 1e-3 new layers, weight decay 0.01), linear
 warm-up 10 % + decay, batch 16, ≤ 8 epochs, early stopping (patience 3) and checkpoint selection
@@ -398,7 +606,9 @@ inverse-frequency class weights. Frozen: XLM-R embeddings + layers 1–8, ResNet
 Accuracy, macro & weighted precision / recall / F1, per-class report, confusion matrix, 95 %
 bootstrap confidence intervals, paired bootstrap tests between models, per-meme latency, and a
 modality ablation (neutral image / removed text) for the multimodal models.
-
+""")
+    with limitations:
+        st.markdown("""
 #### Limitations & responsible use
 - Trained on ~3 k Bengali memes from a few sources: it will not generalise reliably to other
   languages, platforms or time periods. Hindi/Tamil/etc. inputs run but are out-of-distribution.
@@ -409,51 +619,63 @@ modality ablation (neutral image / removed text) for the multimodal models.
 
 
 def page_about() -> None:
-    hero("About IndicSent-M", "Motivation, objectives and technology")
-    st.markdown("""
-#### Motivation
-Indian social media is multilingual, code-mixed and visual. A meme's sentiment often lives in the
-interaction between its caption and its picture — a cheerful caption over a grim image can be sarcasm.
-Text-only, English-centric sentiment tools miss this.
+    hero("Built to explore the whole meme", "A research project on language, visual context, and explainable sentiment analysis.")
+    with st.container(border=True):
+        st.markdown("### Why multimodal sentiment?")
+        st.write("Indian social media is multilingual, code-mixed, and visual. A cheerful caption over a grim image "
+                 "can be sarcasm. IndicSent-M studies whether combining those signals improves sentiment "
+                 "classification over analyzing text or images alone.")
+    left, right = st.columns(2)
+    with left, st.container(border=True):
+        st.markdown("### Research objectives")
+        st.markdown("1. Build text-only, image-only, and multimodal classifiers.\n"
+                    "2. Compare them on identical splits with uncertainty estimates.\n"
+                    "3. Study concatenation and cross-attention fusion.\n"
+                    "4. Explain influential words and image regions, with their limitations.")
+    with right, st.container(border=True):
+        st.markdown("### What is implemented")
+        st.markdown("- Data pipeline with grouped splits\n- Four model architectures\n"
+                    "- Evaluation, bootstrap statistics, and modality ablation\n"
+                    "- Occlusion, Integrated Gradients, and Grad-CAM\n- Streamlit demo, REST API, tests, and Docker")
+        st.caption("Trained weights and the original dataset are not bundled with the repository.")
+    st.markdown("### Technology")
+    for group, detail in [
+        ("Modeling", "PyTorch · XLM-RoBERTa · ResNet-50 · Hugging Face Transformers"),
+        ("Evaluation", "scikit-learn · pandas · Matplotlib · Seaborn"),
+        ("Application", "Python · Streamlit · FastAPI · Docker · pytest"),
+    ]:
+        st.markdown(f"**{group}**  \n{detail}")
+    with st.expander("Future research directions"):
+        st.write("Hinglish data (Memotion 3, registration required), OCR, CLIP-style vision–language encoders, "
+                 "multiple training seeds, confidence calibration, sarcasm-aware training, "
+                 "and human evaluation of explanations.")
 
-#### Research objectives
-1. Build text-only, image-only and multimodal sentiment classifiers for Indian-language memes.
-2. Compare them fairly on identical data splits with uncertainty estimates.
-3. Compare concatenation with cross-attention fusion.
-4. Provide word- and region-level explanations, with their limitations stated.
 
-#### Technologies
-Python · PyTorch · Hugging Face Transformers (XLM-RoBERTa base) · torchvision (ResNet-50) ·
-scikit-learn · pandas · Matplotlib/Seaborn · Streamlit · FastAPI · Docker · pytest
-
-#### Implemented vs. future work
-**Implemented:** data pipeline with leakage-safe splits, 4 trained models, evaluation + bootstrap
-statistics, modality ablation, occlusion / Integrated Gradients / Grad-CAM, this app, REST API, tests, Docker.
-
-**Future work:** Hinglish data (Memotion 3, needs registration), OCR for memes without transcribed text,
-CLIP-style vision–language encoders, multiple training seeds, calibration (temperature scaling),
-sarcasm-aware training, human evaluation of explanations.
-""")
-
-
-PAGES = {"🏠 Home": page_home, "🔍 Analyze": page_analyze, "📊 Model Comparison": page_comparison,
-         "📚 Dataset & Methodology": page_dataset, "ℹ️ About": page_about}
+PAGES = {"Home": page_home, "Analyze": page_analyze, "Model Comparison": page_comparison,
+         "Dataset & Methodology": page_dataset, "About": page_about}
 
 with st.sidebar:
-    st.markdown("## IndicSent-M")
-    choice = st.radio("Navigate", list(PAGES), label_visibility="collapsed")
+    st.markdown('<div class="brand"><span class="brand-mark" aria-hidden="true">◈</span>'
+                '<div><strong>IndicSent-M</strong><small>Multimodal sentiment studio</small></div></div>', unsafe_allow_html=True)
+    st.caption("WORKSPACE")
+    choice = st.radio("Navigate", list(PAGES), key="navigation", label_visibility="collapsed")
     st.divider()
     try:
         avail = get_predictor().available()
-        st.markdown("**Trained models**")
-        for e, name in EXP_NAMES.items():
-            if e in avail:
-                st.markdown(f"✅ {name}<br><span class='small'>val macro-F1 {avail[e]['val_macro_f1']:.3f}</span>",
-                            unsafe_allow_html=True)
-            else:
-                st.markdown(f"⬜ {name} <span class='small'>(not trained)</span>", unsafe_allow_html=True)
-        st.caption(f"Device: {get_predictor().device}")
+        st.markdown("**Model availability**")
+        st.caption(f"{len(avail)} of {len(EXP_NAMES)} trained models available")
+        st.progress(len(avail) / len(EXP_NAMES))
+        with st.expander("Model & runtime details"):
+            for e, name in EXP_NAMES.items():
+                status = f"Available · validation macro-F1 {avail[e]['val_macro_f1']:.3f}" if e in avail else "Not trained"
+                st.markdown(f'<div class="model-row"><strong>{html.escape(name)}</strong>'
+                            f'<span class="small">{status}</span></div>', unsafe_allow_html=True)
+            st.caption(f"Device: {get_predictor().device}")
     except Exception as e:
         st.error(f"Model runtime failed to initialise: {e}")
+    st.markdown('<div class="footer">Bengali memes · MemoSen<br>Research demo · 3 sentiment classes</div>', unsafe_allow_html=True)
 
 PAGES[choice]()
+st.markdown('<div class="footer">IndicSent-M · Multimodal sentiment research<br>'
+            'Predictions and explanations reflect model behavior. Cultural context and sarcasm can change meaning.</div>',
+            unsafe_allow_html=True)

@@ -57,18 +57,18 @@
     "trainable": 28353795,
     "frozen": 249101568
   },
-  "evaluated_at": "2026-10-13T22:57:16+00:00",
-  "eval_pass_seconds": 10.046358416002477,
-  "throughput_examples_per_s": 86.99669709253429,
-  "training_seconds": 576.0862213330001,
+  "evaluated_at": "2026-11-24T10:50:32+00:00",
+  "eval_pass_seconds": 4.591041082981974,
+  "throughput_examples_per_s": 190.3707643217863,
+  "training_seconds": 265.8354859999381,
   "epochs_run": 8,
   "training_device": "mps",
   "latency": {
     "device": "mps",
     "n": 100,
     "batch_size": 1,
-    "median_ms": 18.827583498932654,
-    "mean_ms": 58.571001649943355,
-    "p95_ms": 194.95330034897037
+    "median_ms": 16.87454152852297,
+    "mean_ms": 45.95259086810984,
+    "p95_ms": 162.51056905020937
   }
 }

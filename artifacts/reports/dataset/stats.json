@@ -1,7 +1,7 @@
 {
   "dataset": "memosen",
   "synthetic": false,
-  "prepared_at": "2026-11-18T10:20:23+00:00",
+  "prepared_at": "2026-11-24T10:00:44+00:00",
   "seed": 42,
   "split_source": "group-stratified random (seed=42)",
   "raw_records": 4372,

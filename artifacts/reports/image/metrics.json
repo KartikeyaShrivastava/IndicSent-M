@@ -1,47 +1,47 @@
 {
   "n": 874,
-  "accuracy": 0.6807780320366132,
-  "macro_precision": 0.5214921079946021,
-  "macro_recall": 0.4964614530504808,
-  "macro_f1": 0.5034365953493106,
-  "weighted_precision": 0.6773851685523684,
-  "weighted_recall": 0.6807780320366132,
-  "weighted_f1": 0.6731567777845187,
+  "accuracy": 0.6739130434782609,
+  "macro_precision": 0.5199853042697615,
+  "macro_recall": 0.5333097266159333,
+  "macro_f1": 0.5251123349943176,
+  "weighted_precision": 0.6879092620559861,
+  "weighted_recall": 0.6739130434782609,
+  "weighted_f1": 0.6792647835852073,
   "per_class": {
     "positive": {
-      "precision": 0.6649746192893401,
-      "recall": 0.48698884758364314,
-      "f1-score": 0.5622317596566524,
+      "precision": 0.5868852459016394,
+      "recall": 0.6654275092936803,
+      "f1-score": 0.6236933797909407,
       "support": 269.0
     },
     "neutral": {
-      "precision": 0.16129032258064516,
-      "recall": 0.1724137931034483,
-      "f1-score": 0.16666666666666666,
+      "precision": 0.18181818181818182,
+      "recall": 0.20689655172413793,
+      "f1-score": 0.1935483870967742,
       "support": 58.0
     },
     "negative": {
-      "precision": 0.7382113821138211,
-      "recall": 0.829981718464351,
-      "f1-score": 0.7814113597246127,
+      "precision": 0.7912524850894632,
+      "recall": 0.7276051188299817,
+      "f1-score": 0.758095238095238,
       "support": 547.0
     }
   },
   "confusion_matrix": [
     [
-      131,
+      179,
       18,
-      120
+      72
     ],
     [
-      7,
-      10,
-      41
+      13,
+      12,
+      33
     ],
     [
-      59,
-      34,
-      454
+      113,
+      36,
+      398
     ]
   ],
   "experiment": "image",
@@ -49,26 +49,26 @@
   "modality": "image",
   "fusion": null,
   "checkpoint": "artifacts/checkpoints/image",
-  "checkpoint_epoch": 7,
-  "val_macro_f1_at_selection": 0.5148023938318566,
+  "checkpoint_epoch": 4,
+  "val_macro_f1_at_selection": 0.5218153838396313,
   "dataset": "memosen",
   "parameters": {
     "total": 23514179,
     "trainable": 14970883,
     "frozen": 8543296
   },
-  "evaluated_at": "2026-10-13T22:57:37+00:00",
-  "eval_pass_seconds": 13.002228249999462,
-  "throughput_examples_per_s": 67.21924759319897,
-  "training_seconds": 648.0393767079986,
-  "epochs_run": 8,
+  "evaluated_at": "2026-11-24T10:50:45+00:00",
+  "eval_pass_seconds": 6.00462779100053,
+  "throughput_examples_per_s": 145.55440077566715,
+  "training_seconds": 239.00535191700328,
+  "epochs_run": 7,
   "training_device": "mps",
   "latency": {
     "device": "mps",
     "n": 100,
     "batch_size": 1,
-    "median_ms": 19.752979000259074,
-    "mean_ms": 19.82607959973393,
-    "p95_ms": 20.74815239848249
+    "median_ms": 11.196229548659176,
+    "mean_ms": 11.091329199261963,
+    "p95_ms": 11.831770517164841
   }
 }
